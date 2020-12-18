@@ -22,7 +22,6 @@ class Database:
         self._password = password 
 
         self.savedir = f'dbdata/{name}_db'
-        
         if load:
             #check for user before loading 
             try:
@@ -34,6 +33,7 @@ class Database:
 
                 return
             except Exception as e :
+                print(e)
                 print(f'"{name}" db does not exist, creating new.')
 
         # create dbdata directory if it doesnt exist
@@ -50,10 +50,10 @@ class Database:
         # create all the meta tables
         self.create_table('meta_users',  ['user', 'group','db','tables','password'], [str, str, str, str,str])
         
-        # insert admin only 
+        # insert system only 
         # default user is Admin
         # default password is password
-        self._create_admin(name,user,password)
+        self._create_system(name,user,password)
         
         
         self.create_table('meta_length',  ['table_name', 'no_of_rows'], [str, int])
@@ -65,6 +65,57 @@ class Database:
 
     #### User and Privileges ####
     
+    def _check_priviledges(func):
+        def wrapper(*args, **kwargs):
+            try:
+                admin = ["lockX_table","unlock_table","insert","update","delete","select","show_table","sort","inner_join"]
+
+                user = ["select","show_table","sort","inner_join"]
+                
+                self = args[0]
+                currentUser = self._currentUser
+                fname = func.__name__
+                tables = currentUser.tables[0]
+
+                if currentUser.group[0] == "system":
+                    func(*args, **kwargs) 
+
+                elif currentUser.group[0] == "admin":
+                    print(fname in admin)
+                    if (fname in admin):
+                        print("MALAKAS")
+                        if tables != "*":
+                            for table in tables.split(","):
+                                print(table == args[1])
+                                if table == args[1]:
+                                    func(*args, **kwargs)
+                        else:
+                            if not args[1][:4]=="meta":
+                                func(*args, **kwargs)
+                            else:
+                                sys.exit('You have no access for this! Exiting...') 
+
+                elif currentUser.group[0] == "user":
+                    
+                    if (fname in user):
+                        if tables != "*":
+                            for table in tables.split(","):
+                                if table == args[1]:
+                                    func(*args, **kwargs)
+                        else:
+                            if not args[1][:4]=="meta":
+                                func(*args, **kwargs)
+                            else:
+                                sys.exit('You have no access for this! Exiting...')
+
+                else: 
+                    sys.exit('What are you doing here? ! Exiting...')
+            except Exception as e:
+                print (e)
+                sys.exit('What are you doing here? asdasd! Exiting...')
+
+        return wrapper
+
     def _encrypt(self,password):
         return hashlib.sha256(password.encode()).hexdigest()
 
@@ -72,20 +123,20 @@ class Database:
         password = self._encrypt(password)
  
         userTable=self.tables['meta_users']._select_where("*",f'user=={user}')
-    
+
         if (userTable.user[0] == user and userTable.password[0] == password):
             return userTable
         else:
             sys.exit('User Validation Error ! Exiting...')
 
-    #available groups ["admin","rw","r"]
-    #admin has full access
-    #rw can read and write but can not alter users 
-    #r can only read 
+    # available groups ["system","admin","user"]
+    # system has full access
+    # admin can read and write but can not alter users 
+    # user can only read 
     def create_user(self,user,password,group,tables):
-        groups = ["admin","rw","r"]
+        groups = ["system","admin","user"]
 
-        if self._currentUser.group[0] == "admin":
+        if self._currentUser.group[0] == "system":
             userTable=self.tables['meta_users']._select_where("*",f'user=={user}')
 
             if not userTable.user:
@@ -109,8 +160,8 @@ class Database:
 
                     password = self._encrypt(password)
                     self.tables['meta_users']._insert([user,group,self._name,tables,password])
-                    self.tables['meta_users']._insert(["asdasd","asdasd","asdasd","asdasd","asdasd"])
 
+                    self.save()
 
                     print(f"User {user} created sucessfuly!")
 
@@ -123,8 +174,7 @@ class Database:
         else:
             sys.exit('Only admin users can create new users! Exiting...')
 
-
-    def _create_admin(self,dbname ,user,password):
+    def _create_system(self,dbname ,user,password):
         if (user==None):
             user = "Admin"
 
@@ -133,10 +183,8 @@ class Database:
         else:
             password = self._encrypt(password) 
 
-        self.tables['meta_users']._insert([user,"admin",dbname,"*",password])
-
-
-
+        self.tables['meta_users']._insert([user,"system",dbname,"*",password])
+   
     def save(self):
         '''
         Save db as a pkl file. This method saves the db object, ie all the tables and attributes.
@@ -180,7 +228,7 @@ class Database:
         self._update_meta_locks()
         self._update_meta_insert_stack()
 
-
+    @_check_priviledges
     def create_table(self, name=None, column_names=None, column_types=None, primary_key=None, load=None):
         '''
         This method create a new table. This table is saved and can be accessed by
@@ -199,8 +247,7 @@ class Database:
         print(f'New table "{name}"')
         self._update()
         self.save()
-
-
+    @_check_priviledges
     def drop_table(self, table_name):
         '''
         Drop table with name 'table_name' from current db
@@ -221,8 +268,7 @@ class Database:
 
         # self._update()
         self.save()
-
-
+    @_check_priviledges
     def table_from_csv(self, filename, name=None, column_types=None, primary_key=None):
         '''
         Create a table from a csv file.
@@ -250,8 +296,7 @@ class Database:
         self.unlock_table(name)
         self._update()
         self.save()
-
-
+    @_check_priviledges
     def table_to_csv(self, table_name, filename=None):
         res = ''
         for row in [self.tables[table_name].column_names]+self.tables[table_name].data:
@@ -262,7 +307,7 @@ class Database:
 
         with open(filename, 'w') as file:
            file.write(res)
-
+    @_check_priviledges
     def table_from_object(self, new_table):
         '''
         Add table obj to database.
@@ -277,7 +322,6 @@ class Database:
         self.save()
 
 
-
     ##### table functions #####
 
     # In every table function a load command is executed to fetch the most recent table.
@@ -287,7 +331,7 @@ class Database:
     # tables.
 
     # these function calls are named close to the ones in postgres
-
+    @_check_priviledges
     def cast_column(self, table_name, column_name, cast_type):
         '''
         Change the type of the specified column and cast all the prexisting values.
@@ -305,7 +349,7 @@ class Database:
         self.unlock_table(table_name)
         self._update()
         self.save()
-
+    @_check_priviledges
     def insert(self, table_name, row, lock_load_save=True):
         '''
         Inserts into table
@@ -333,8 +377,7 @@ class Database:
             self.unlock_table(table_name)
             self._update()
             self.save()
-
-
+    @_check_priviledges
     def update(self, table_name, set_value, set_column, condition):
         '''
         Update the value of a column where condition is met.
@@ -356,7 +399,7 @@ class Database:
         self.unlock_table(table_name)
         self._update()
         self.save()
-
+    @_check_priviledges
     def delete(self, table_name, condition):
         '''
         Delete rows of a table where condition is met.
@@ -380,7 +423,7 @@ class Database:
         if table_name[:4]!='meta':
             self._add_to_insert_stack(table_name, deleted)
         self.save()
-
+    @_check_priviledges
     def select(self, table_name, columns, condition=None, order_by=None, asc=False,\
                top_k=None, save_as=None, return_object=False):
         '''
@@ -422,6 +465,7 @@ class Database:
             else:
                 table.show()
 
+    @_check_priviledges
     def show_table(self, table_name, no_of_rows=None):
         '''
         Print a table using a nice tabular design (tabulate)
@@ -432,7 +476,7 @@ class Database:
         if self.is_locked(table_name):
             return
         self.tables[table_name].show(no_of_rows, self.is_locked(table_name))
-
+    @_check_priviledges
     def sort(self, table_name, column_name, asc=False):
         '''
         Sorts a table based on a column
@@ -450,7 +494,7 @@ class Database:
         self.unlock_table(table_name)
         self._update()
         self.save()
-
+    @_check_priviledges
     def inner_join(self, left_table_name, right_table_name, condition, save_as=None, return_object=False):
         '''
         Join two tables that are part of the database where condition is met.
@@ -478,7 +522,7 @@ class Database:
                 return res
             else:
                 res.show()
-
+    @_check_priviledges
     def lockX_table(self, table_name):
         '''
         Locks the specified table using the exclusive lock (X)
@@ -491,7 +535,7 @@ class Database:
         self.tables['meta_locks']._update_row(True, 'locked', f'table_name=={table_name}')
         self._save_locks()
         # print(f'Locking table "{table_name}"')
-
+    @_check_priviledges
     def unlock_table(self, table_name):
         '''
         Unlocks the specified table that is exclusivelly locked (X)
@@ -501,7 +545,7 @@ class Database:
         self.tables['meta_locks']._update_row(False, 'locked', f'table_name=={table_name}')
         self._save_locks()
         # print(f'Unlocking table "{table_name}"')
-
+    @_check_priviledges
     def is_locked(self, table_name):
         '''
         Check whether the specified table is exclusivelly locked (X)
@@ -600,6 +644,7 @@ class Database:
 
 
     # indexes
+    @_check_priviledges
     def create_index(self, table_name, index_name, index_type='Btree'):
         '''
         Create an index on a specified table with a given name.
