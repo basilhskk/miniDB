@@ -6,24 +6,34 @@ import os
 from btree import Btree
 import shutil
 from misc import split_condition
+import sys 
+import hashlib
+
 
 class Database:
     '''
     Database class contains tables.
     '''
 
-    def __init__(self, name, load=True):
+    def __init__(self, name, load=True, user=None, password=None):
         self.tables = {}
         self._name = name
+        self._user = user
+        self._password = password 
 
         self.savedir = f'dbdata/{name}_db'
-
+        
         if load:
+            #check for user before loading 
             try:
                 self.load(self.savedir)
+
+                self._currentUser = self._get_user(user,password)
+
                 print(f'Loaded "{name}".')
+
                 return
-            except:
+            except Exception as e :
                 print(f'"{name}" db does not exist, creating new.')
 
         # create dbdata directory if it doesnt exist
@@ -36,12 +46,94 @@ class Database:
         except:
             pass
 
+       
         # create all the meta tables
+        self.create_table('meta_users',  ['user', 'group','db','tables','password'], [str, str, str, str,str])
+        
+        # insert admin only 
+        # default user is Admin
+        # default password is password
+        self._create_admin(name,user,password)
+        
+        
         self.create_table('meta_length',  ['table_name', 'no_of_rows'], [str, int])
         self.create_table('meta_locks',  ['table_name', 'locked'], [str, bool])
         self.create_table('meta_insert_stack',  ['table_name', 'indexes'], [str, list])
         self.create_table('meta_indexes',  ['table_name', 'index_name'], [str, str])
         self.save()
+
+
+    #### User and Privileges ####
+    
+    def _encrypt(self,password):
+        return hashlib.sha256(password.encode()).hexdigest()
+
+    def _get_user(self,user,password):
+        password = self._encrypt(password)
+ 
+        userTable=self.tables['meta_users']._select_where("*",f'user=={user}')
+    
+        if (userTable.user[0] == user and userTable.password[0] == password):
+            return userTable
+        else:
+            sys.exit('User Validation Error ! Exiting...')
+
+    #available groups ["admin","rw","r"]
+    #admin has full access
+    #rw can read and write but can not alter users 
+    #r can only read 
+    def create_user(self,user,password,group,tables):
+        groups = ["admin","rw","r"]
+
+        if self._currentUser.group[0] == "admin":
+            userTable=self.tables['meta_users']._select_where("*",f'user=={user}')
+
+            if not userTable.user:
+                
+                if group in groups:
+                    
+                    # tables 
+                    # , separeted values only or * for all the tables
+                    # check if the tables exist
+                    if tables != "*":
+                        try:
+                            for table in tables.split(","):
+                                try:
+                                    data = self.tables[table]
+                                except Exception as e:
+                                    sys.ext(f"Error! table {table} does not exist. Exiting...")
+
+                        except Exception as e:
+                            sys.exit('Error! Enter only "," (comma) separated tables or * for all the tables! Exiting...')
+                    
+
+                    password = self._encrypt(password)
+                    self.tables['meta_users']._insert([user,group,self._name,tables,password])
+                    self.tables['meta_users']._insert(["asdasd","asdasd","asdasd","asdasd","asdasd"])
+
+
+                    print(f"User {user} created sucessfuly!")
+
+                else:
+                    sys.exit('Error! Not valid group, available groups are ["admin","rw","r"]! Exiting...')
+
+            else:
+                sys.exit('User already exists! Exiting...')
+
+        else:
+            sys.exit('Only admin users can create new users! Exiting...')
+
+
+    def _create_admin(self,dbname ,user,password):
+        if (user==None):
+            user = "Admin"
+
+        if (password == None):
+            password = self._encrypt("password")
+        else:
+            password = self._encrypt(password) 
+
+        self.tables['meta_users']._insert([user,"admin",dbname,"*",password])
 
 
 
