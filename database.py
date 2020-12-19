@@ -81,9 +81,7 @@ class Database:
                     func(*args, **kwargs) 
 
                 elif currentUser.group[0] == "admin":
-                    print(fname in admin)
                     if (fname in admin):
-                        print("MALAKAS")
                         if tables != "*":
                             for table in tables.split(","):
                                 print(table == args[1])
