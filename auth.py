@@ -3,11 +3,9 @@ from functools import wraps
 def hasAccess(minPriv, currentPriv):
 
     if minPriv == "system" and currentPriv == "system" :
-        print("here")
         return True
 
     if minPriv == "admin" and (currentPriv =="system" or currentPriv=="system"):
-        print("her2e")
         return True
 
     if minPriv == "user":
@@ -41,6 +39,7 @@ def privileges(minPriv):
                     if table == args[1]:
                         ret = function(*args, **kwargs) 
                         return ret
+                raise Exception('You have no access for this table ! Exiting...')
             else:
                 if not args[1][:4]=="meta":
                     ret = function(*args, **kwargs) 

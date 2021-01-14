@@ -37,7 +37,6 @@ class Database:
 
                 return
             except Exception as e :
-                print(e)
                 if("User Validation Error" in str(e)):
                     sys.exit(1) 
                 print(f'"{name}" db does not exist, creating new.')
@@ -172,7 +171,6 @@ class Database:
                                     raise Exception(f"Error! table {table} does not exist. Exiting...")
 
                         except Exception as e:
-                            print(e)
                             raise Exception('Error! Enter only "," (comma) separated tables or * for all the tables! Exiting...')
                     
 
